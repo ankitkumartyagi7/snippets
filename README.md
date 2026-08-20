@@ -674,7 +674,41 @@ function createRateLimiter({
 
 ## Retry and Backoff
 
-(Add your retry and backoff implementations here)
+Implements retry logic with exponential backoff for failed operations.
+
+```js
+async function retryWithBackoff(fn, {
+  retries = 3,
+  backoff = 1_000,
+  maxBackoff = 10_000
+} = {}) {
+  let attempt = 0;
+
+  while (attempt <= retries) {
+    try {
+      return await fn();
+    } catch (error) {
+      attempt++;
+
+      if (attempt > retries) {
+        throw error;
+      }
+
+      const delay = Math.min(backoff * 2 ** (attempt - 1), maxBackoff);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+}
+```
+
+Usage:
+
+```js
+const result = await retryWithBackoff(
+  () => fetch('https://api.example.com/data'),
+  { retries: 3, backoff: 1_000 }
+);
+```
 
 ---
 
@@ -682,15 +716,74 @@ function createRateLimiter({
 
 ### Basic Debounce
 
-(Add your debounce implementations here)
+Delays function execution until after a specified wait time has passed since the last call.
+
+```js
+function debounce(fn, delay) {
+  let timeoutId;
+
+  return function (...args) {
+    clearTimeout(timeoutId);
+
+    timeoutId = setTimeout(() => {
+      fn.apply(this, args);
+    }, delay);
+  };
+}
+```
 
 ### Debounce with Cancel
 
-(Add your debounce implementations here)
+Adds a cancel method to clear the pending timeout.
+
+```js
+function debounceWithCancel(fn, delay) {
+  let timeoutId;
+
+  const debounced = function (...args) {
+    clearTimeout(timeoutId);
+
+    timeoutId = setTimeout(() => {
+      fn.apply(this, args);
+    }, delay);
+  };
+
+  debounced.cancel = function () {
+    clearTimeout(timeoutId);
+  };
+
+  return debounced;
+}
+```
 
 ### Debounce with Cancel and Flush
 
-(Add your debounce implementations here)
+Adds both cancel and immediate execution (flush) capabilities.
+
+```js
+function debounceWithCancelAndFlush(fn, delay) {
+  let timeoutId;
+
+  const debounced = function (...args) {
+    clearTimeout(timeoutId);
+
+    timeoutId = setTimeout(() => {
+      fn.apply(this, args);
+    }, delay);
+  };
+
+  debounced.cancel = function () {
+    clearTimeout(timeoutId);
+  };
+
+  debounced.flush = function (...args) {
+    clearTimeout(timeoutId);
+    return fn.apply(this, args);
+  };
+
+  return debounced;
+}
+```
 
 ---
 
@@ -698,15 +791,84 @@ function createRateLimiter({
 
 ### Infinite Curry
 
-(Add your curry implementations here)
+Allows unlimited chained function calls.
+
+```js
+function infiniteCurry(fn) {
+  return function curried(...args) {
+    if (args.length >= fn.length) {
+      return fn(...args);
+    }
+
+    return function (...moreArgs) {
+      return curried(...args, ...moreArgs);
+    };
+  };
+}
+```
+
+Usage:
+
+```js
+function add(a, b, c) {
+  return a + b + c;
+}
+
+const curriedAdd = infiniteCurry(add);
+
+console.log(curriedAdd(1)(2)(3)); // 6
+console.log(curriedAdd(1, 2)(3)); // 6
+```
 
 ### Variadic Curry
 
-(Add your curry implementations here)
+Handles functions with variable arguments.
+
+```js
+function variadicCurry(fn) {
+  return function curried(...args) {
+    return function (...moreArgs) {
+      const allArgs = [...args, ...moreArgs];
+
+      if (allArgs.length >= fn.length) {
+        return fn(...allArgs);
+      }
+
+      return curried(...allArgs);
+    };
+  };
+}
+```
 
 ### Seed-Based Infinite Curry
 
-(Add your curry implementations here)
+Accumulates values with a seed until explicitly called.
+
+```js
+function seedBasedInfiniteCurry(seed = 0) {
+  const curry = function (value) {
+    if (value === undefined) {
+      return seed;
+    }
+
+    return seedBasedInfiniteCurry(seed + value);
+  };
+
+  curry.valueOf = () => seed;
+  curry.toString = () => seed;
+
+  return curry;
+}
+```
+
+Usage:
+
+```js
+const add = seedBasedInfiniteCurry();
+
+console.log(add(1)(2)(3)()); // 6
+console.log(+add(1)(2)(3)); // 6
+```
 
 ---
 
@@ -714,23 +876,159 @@ function createRateLimiter({
 
 ### Class Names Utility
 
-(Add your utility implementations here)
+Conditionally joins class names based on truthy values.
+
+```js
+function classNames(...args) {
+  return args
+    .flatMap(arg => {
+      if (typeof arg === 'string' || typeof arg === 'number') {
+        return arg;
+      }
+
+      if (Array.isArray(arg)) {
+        return classNames(...arg);
+      }
+
+      if (typeof arg === 'object' && arg !== null) {
+        return Object.keys(arg).filter(key => arg[key]);
+      }
+
+      return [];
+    })
+    .filter(Boolean)
+    .join(' ');
+}
+```
+
+Usage:
+
+```js
+classNames('btn', 'btn-primary', { disabled: true, active: false });
+// "btn btn-primary disabled"
+```
 
 ### Custom setTimeout
 
-(Add your utility implementations here)
+A promise-based setTimeout wrapper.
+
+```js
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+```
+
+Usage:
+
+```js
+await sleep(1000);
+console.log('Executed after 1 second');
+```
 
 ### Pub/Sub
 
-(Add your utility implementations here)
+Publish-Subscribe pattern implementation.
+
+```js
+class PubSub {
+  constructor() {
+    this.events = {};
+  }
+
+  subscribe(event, callback) {
+    if (!this.events[event]) {
+      this.events[event] = [];
+    }
+
+    this.events[event].push(callback);
+
+    return () => this.unsubscribe(event, callback);
+  }
+
+  unsubscribe(event, callback) {
+    if (!this.events[event]) {
+      return;
+    }
+
+    this.events[event] = this.events[event].filter(
+      cb => cb !== callback
+    );
+  }
+
+  publish(event, data) {
+    if (!this.events[event]) {
+      return;
+    }
+
+    this.events[event].forEach(callback => callback(data));
+  }
+}
+```
+
+Usage:
+
+```js
+const pubsub = new PubSub();
+
+const unsubscribe = pubsub.subscribe('message', (data) => {
+  console.log('Received:', data);
+});
+
+pubsub.publish('message', 'Hello!');
+unsubscribe();
+```
 
 ### Async Function Composition
 
-(Add your utility implementations here)
+Composes multiple async functions.
+
+```js
+function composeAsync(...fns) {
+  return async function (input) {
+    let result = input;
+
+    for (const fn of fns) {
+      result = await fn(result);
+    }
+
+    return result;
+  };
+}
+```
+
+Usage:
+
+```js
+const addOne = async x => x + 1;
+const double = async x => x * 2;
+
+const pipeline = composeAsync(addOne, double);
+
+console.log(await pipeline(5)); // 12
+```
 
 ### Pipeline
 
-(Add your utility implementations here)
+Left-to-right function composition.
+
+```js
+function pipe(...fns) {
+  return function (input) {
+    return fns.reduce((acc, fn) => fn(acc), input);
+  };
+}
+```
+
+Usage:
+
+```js
+const addOne = x => x + 1;
+const double = x => x * 2;
+
+const pipeline = pipe(addOne, double);
+
+console.log(pipeline(5)); // 12
+```
 
 ---
 
@@ -738,27 +1036,197 @@ function createRateLimiter({
 
 ### Uncontrolled Input Wrapper
 
-(Add your React examples here)
+A reusable wrapper for uncontrolled inputs.
+
+```jsx
+import { useRef, useEffect } from 'react';
+
+function UncontrolledInput({ defaultValue, onChange, ...props }) {
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    if (inputRef.current) {
+      inputRef.current.value = defaultValue;
+    }
+  }, [defaultValue]);
+
+  return (
+    <input
+      ref={inputRef}
+      onChange={e => onChange?.(e.target.value)}
+      {...props}
+    />
+  );
+}
+```
 
 ### useDebounce
 
-(Add your React examples here)
+Custom hook for debouncing values.
+
+```jsx
+import { useState, useEffect } from 'react';
+
+function useDebounce(value, delay) {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+
+    return () => clearTimeout(timeoutId);
+  }, [value, delay]);
+
+  return debouncedValue;
+}
+```
+
+Usage:
+
+```jsx
+const searchValue = useDebounce(inputValue, 300);
+```
 
 ### useThrottle
 
-(Add your React examples here)
+Custom hook for throttling values.
+
+```jsx
+import { useState, useEffect, useRef } from 'react';
+
+function useThrottle(value, interval) {
+  const [throttledValue, setThrottledValue] = useState(value);
+  const lastUpdated = useRef(0);
+
+  useEffect(() => {
+    const now = Date.now();
+
+    if (now - lastUpdated.current >= interval) {
+      lastUpdated.current = now;
+      setThrottledValue(value);
+    } else {
+      const timeoutId = setTimeout(() => {
+        lastUpdated.current = Date.now();
+        setThrottledValue(value);
+      }, interval - (now - lastUpdated.current));
+
+      return () => clearTimeout(timeoutId);
+    }
+  }, [value, interval]);
+
+  return throttledValue;
+}
+```
 
 ### useFetch
 
-(Add your React examples here)
+Custom hook for data fetching.
+
+```jsx
+import { useState, useEffect } from 'react';
+
+function useFetch(url, options = {}) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    const fetchData = async () => {
+      try {
+        const response = await fetch(url, {
+          ...options,
+          signal: controller.signal
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const result = await response.json();
+        setData(result);
+      } catch (err) {
+        if (err.name !== 'AbortError') {
+          setError(err);
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+
+    return () => controller.abort();
+  }, [url]);
+
+  return { data, loading, error };
+}
+```
 
 ### useLocalStorage
 
-(Add your React examples here)
+Custom hook for persisting state in localStorage.
+
+```jsx
+import { useState, useEffect } from 'react';
+
+function useLocalStorage(key, initialValue) {
+  const [storedValue, setStoredValue] = useState(() => {
+    try {
+      const item = window.localStorage.getItem(key);
+      return item ? JSON.parse(item) : initialValue;
+    } catch (error) {
+      console.error(error);
+      return initialValue;
+    }
+  });
+
+  const setValue = (value) => {
+    try {
+      const valueToStore = value instanceof Function ? value(storedValue) : value;
+      setStoredValue(valueToStore);
+      window.localStorage.setItem(key, JSON.stringify(valueToStore));
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  return [storedValue, setValue];
+}
+```
 
 ### Custom useState
 
-(Add your React examples here)
+A simplified useState implementation for understanding.
+
+```jsx
+let state = [];
+let currentStateIndex = 0;
+
+function customUseState(initialValue) {
+  const currentIndex = currentStateIndex;
+
+  if (state[currentIndex] === undefined) {
+    state[currentIndex] = initialValue;
+  }
+
+  const setState = (newValue) => {
+    state[currentIndex] = newValue;
+    render();
+  };
+
+  currentStateIndex++;
+
+  return [state[currentIndex], setState];
+}
+
+function render() {
+  currentStateIndex = 0;
+  // Re-render component
+}
+```
 
 ---
 
@@ -766,7 +1234,33 @@ function createRateLimiter({
 
 ### Role-Based Protected Routes
 
-(Add your React Router examples here)
+Protects routes based on user roles.
+
+```jsx
+import { Navigate, Outlet } from 'react-router-dom';
+
+function ProtectedRoute({ allowedRoles, user }) {
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (!allowedRoles.includes(user.role)) {
+    return <Navigate to="/unauthorized" replace />;
+  }
+
+  return <Outlet />;
+}
+```
+
+Usage:
+
+```jsx
+<Routes>
+  <Route element={<ProtectedRoute allowedRoles={['admin']} user={user} />}>
+    <Route path="/admin" element={<AdminDashboard />} />
+  </Route>
+</Routes>
+```
 
 ---
 
@@ -774,22 +1268,143 @@ function createRateLimiter({
 
 ### Task Scheduler
 
-(Add your async programming examples here)
+Limits concurrent task execution.
+
+```js
+class TaskScheduler {
+  constructor(maxConcurrent) {
+    this.maxConcurrent = maxConcurrent;
+    this.running = 0;
+    this.queue = [];
+  }
+
+  async add(task) {
+    if (this.running >= this.maxConcurrent) {
+      await new Promise(resolve => this.queue.push(resolve));
+    }
+
+    this.running++;
+
+    try {
+      return await task();
+    } finally {
+      this.running--;
+
+      if (this.queue.length) {
+        const next = this.queue.shift();
+        next();
+      }
+    }
+  }
+}
+```
+
+Usage:
+
+```js
+const scheduler = new TaskScheduler(3);
+
+scheduler.add(() => fetch('https://api.example.com/1'));
+scheduler.add(() => fetch('https://api.example.com/2'));
+```
 
 ### URL Crawler
 
-(Add your async programming examples here)
+Crawls URLs with concurrency control.
+
+```js
+async function crawlUrls(urls, maxConcurrent = 5) {
+  const scheduler = new TaskScheduler(maxConcurrent);
+  const results = [];
+
+  const tasks = urls.map(url =>
+    scheduler.add(async () => {
+      const response = await fetch(url);
+      const data = await response.json();
+      results.push({ url, data });
+    })
+  );
+
+  await Promise.all(tasks);
+
+  return results;
+}
+```
 
 ### mapAsyncLimit
 
-(Add your async programming examples here)
+Maps over array with concurrency limit.
+
+```js
+async function mapAsyncLimit(array, limit, asyncFn) {
+  const results = [];
+  const scheduler = new TaskScheduler(limit);
+
+  const promises = array.map((item, index) =>
+    scheduler.add(async () => {
+      results[index] = await asyncFn(item, index);
+    })
+  );
+
+  await Promise.all(promises);
+
+  return results;
+}
+```
+
+Usage:
+
+```js
+const results = await mapAsyncLimit(
+ ,[1][2][3][4][5]
+  2,
+  async (num) => {
+    await sleep(1000);
+    return num * 2;
+  }
+);
+```
 
 ### Sequential vs Parallel Execution
 
-(Add your async programming examples here)
+```js
+// Sequential execution
+async function runSequentially(tasks) {
+  const results = [];
+
+  for (const task of tasks) {
+    results.push(await task());
+  }
+
+  return results;
+}
+
+// Parallel execution
+async function runParallel(tasks) {
+  return Promise.all(tasks.map(task => task()));
+}
+
+// Parallel with limit
+async function runParallelWithLimit(tasks, limit) {
+  return mapAsyncLimit(tasks, limit, task => task());
+}
+```
 
 ---
 
 ## Important Notes
 
-(Add your important notes here)
+1. **Polyfills**: These implementations are for learning purposes. In production, use native methods or well-tested libraries.
+
+2. **Rate Limiting**: Choose the right strategy based on your use case:
+   - **Throttle**: For UI events (scroll, resize)
+   - **Debounce**: For search inputs, form validation
+   - **Rate Limiter**: For API calls
+
+3. **Memoization**: JSON-based is simpler but doesn't handle circular references. Trie-based is more flexible but uses more memory.
+
+4. **Async Patterns**: Always handle errors in async operations and clean up resources (abort controllers, timeouts).
+
+5. **React Hooks**: Follow the rules of hooks - only call at the top level and in React functions.
+
+6. **Performance**: Consider time and space complexity when choosing implementations for interviews.
